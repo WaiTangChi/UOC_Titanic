@@ -25,3 +25,7 @@ Esta práctica ha sido realizada por aantonc de forma individual.
 * generated/submission_modelo3.csv : Fichero de resultados del modelo 3 para kaggle.
 * generated/submission_modelo4.csv : Fichero de resultados del modelo 4 para kaggle.
 * generated/submission_modelo5.csv : Fichero de resultados del modelo 5 para kaggle.
+
+# Kaggle
+
+Los ficheros de resultados han sido incluidos en la competición "Titanic" the Kaggle: https://www.kaggle.com/aantonc
