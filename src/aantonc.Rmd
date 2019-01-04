@@ -1,0 +1,588 @@
+---
+title: 'Tipología de Datos, práctica 2'
+author: "Autor: Adrián Antón Collado, aantonc@uoc.edu"
+date: "7 de Enero de 2019"
+output:
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+  word_document: default
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+---
+
+#Descripción de la Práctica a realizar
+
+**El objetivo de esta actividad será el tratamiento de un dataset, que puede ser el creado en la práctica 1 o bien cualquier dataset libre disponible en [Kaggle](https://www.kaggle.com). Algunos ejemplos de dataset con los que podéis trabajar son:**
+
+**- [Red Wine Quality](https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009)**
+
+**- [Titanic: Machine Learning from Disaster](https://www.kaggle.com/c/titanic)**
+
+**El último ejemplo corresponde a una competición activa de Kaggle de manera que, opcionalmente, podéis aprovechar el trabajo realizado durante la práctica para entrar en esta competición. Siguiendo las principales etapas de un proyecto analítico, las diferentes tareas a realizar (y justificar) son las siguientes:**
+
+#Descripción del dataset
+
+**¿Por qué es importante y qué pregunta/problema pretende responder?**
+
+El conjunto de datos elegido es [Titanic: Machine Learning from Disaster](https://www.kaggle.com/c/titanic). La motivación de elegir este conjunto de datos es porque es una competición activa de Kaggle y ello supone un plus importante.
+
+El problema describe datos sobre los pasajeros del [Titanic](https://en.wikipedia.org/wiki/RMS_Titanic) y si han sobrevivido o no a dicho desastre. Tomando como base estos datos se pretende construir un modelo que sea capaz de predecir si un pasajero ha sobrevivido o no.
+
+Mediante este modelo se pueden analizar las causas de la alta tasa de mortalidad para mejorar las medidas de emergencia a aplicar en caso de desastres parecidas.
+
+#Integración y selección de los datos de interés a analizar.
+
+```{r carga librerias, include = FALSE}
+if(!require(ggplot2)){
+    install.packages('ggplot2', repos='http://cran.us.r-project.org')
+    library(ggplot2)
+}
+if(!require(VIM)){
+    install.packages('VIM', repos='http://cran.us.r-project.org')
+    library(VIM)
+}
+if(!require(nortest)){
+    install.packages('nortest', repos='http://cran.us.r-project.org')
+    library(nortest)
+}
+```
+
+```{r carga de datos}
+datosEntrenamiento <- read.csv("train.csv",header=T,sep=",")
+datosTest <- read.csv("test.csv",header=T,sep=",")
+str(datosEntrenamiento)
+```
+
+```{r resumen de datos}
+summary(datosEntrenamiento)
+```
+
+La variable `PassengerId` identifica univocamente al pasajero, por lo que hay 891 valores diferentes. No parece una variable a tener en cuenta para la construcción del modelo, por lo que la eliminaremos.
+
+```{r analisis de PassengerId}
+length(unique(datosEntrenamiento$PassengerId))
+datosEntrenamiento <- subset(datosEntrenamiento, select = -c(PassengerId))
+```
+
+La variable `Survived` identifica si el pasajero sobrevivió (`1`) o no (`0`). En el conjunto de entrenamiento hay 342 supervivientes y 549 no supervivientes.
+
+```{r analisis de Survived}
+# Lo transformamos a factor
+#datosEntrenamiento$Survived <- as.factor(datosEntrenamiento$Survived)
+datosEntrenamiento$SurvivedFactor <- as.factor(datosEntrenamiento$Survived)
+counts <- table(datosEntrenamiento$SurvivedFactor)
+#counts
+barplot(counts, main="Titanic",  xlab="Survived", col=rainbow(2))
+```
+
+La varialble `Pclass` identifica si el pasajero viajaba en primera clase (`1`), segunda clase (`2`) o tercera clase (`3`). Podemos ver que en el conjunto de entrenamiento hay 216 pasajeros en primera clase, 184 pasajeros en segunda clase y 491 en tercera clase. Además podemos observar que el % de supervivientes es mucho mayor en cuanto mejor es la clase en la que viajaba el pasarejo.
+
+```{r analisis de Pclass}
+# El test de Levene necesita que sea un valor numérico
+datosEntrenamiento$Pclass <- as.factor(datosEntrenamiento$Pclass)
+datosTest$Pclass <- as.factor(datosTest$Pclass)
+counts <- table(datosEntrenamiento$Pclass)
+#counts
+barplot(counts, main="Titanic",  xlab="Pclass",col=rainbow(3))
+ggplot(data=datosEntrenamiento[,],aes(x=`Pclass`,fill=`SurvivedFactor`))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+La variable `Name` es el nombre del pasajero, por lo que hay 891 valores diferentes. No parece una variable a tener en cuenta para la construcción del modelo.
+
+```{r analisis de Name}
+length(unique(datosEntrenamiento$Name))
+datosEntrenamiento <- subset(datosEntrenamiento, select = -c(Name))
+```
+
+La variable `Sex` identifica el género del pasajero. Vemos que hay `577` hombres y `314` mujeres. Además podemos ver que el % de supervivientes es mucho más alto para mujeres que para hombres.
+
+```{r analisis de Sex}
+counts <- table(datosEntrenamiento$Sex)
+#counts
+barplot(counts, main="Titanic",  xlab="Sex", col=rainbow(2))
+ggplot(data=datosEntrenamiento[,],aes(x=`Sex`,fill=`SurvivedFactor`))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+La variable `Age` identifica la edad del pasajero. Vemos que el mínimo es de `0.42` años y el máximo de `80` con una mediana de `28` y una media de `29.7`. Además podemos ver que hay `177` pasajeros con edad `NA`, con lo que se desconoce su edad.
+
+```{r analisis de Age}
+summary(datosEntrenamiento$Age)
+```
+
+La variable `SibSp` identifica el número de familiares a bordo incluyendo marido/esposa y hermanos. Hay un mínimo de `0` y un máximo de `8` con una mediana de `0.0` y una media de `0.523`.
+
+```{r analisis de SibSp}
+summary(datosEntrenamiento$SibSp)
+```
+
+La variable `Parch` identifica el número de familiares a bordo incluyendo padres e hijos. Hay un mínimo de `0` y un máximo de `6` con una mediana de `0.0` y una media de `0.3816`.
+
+```{r analisis de Parch}
+summary(datosEntrenamiento$Parch)
+```
+
+La variable `Ticket` identifica el número de serie del tiquet que utilizó el pasajero para acceder. Hay muchísimos valores diferentes que no parecen aportar gran información por lo que lo eliminaremos.
+
+```{r analisis de Ticket}
+length(unique(datosEntrenamiento$Ticket))
+datosEntrenamiento <- subset(datosEntrenamiento, select = -c(Ticket))
+```
+
+La variable `Fare` identifica la tarifa pagada por el pasajero. Hay un mínimo de `0.0` que puede identificar tanto polizones como datos desconocidos y que corresponde a 15 pasajeros. El máximo es `512.33`. La mediana es de `14.45` y la media es de `32.20`. Viendo los pasajeros correspondientes a la mayor tarifa podemos ver que pertenecen al mismo ticket.
+
+```{r analisis de Fare}
+summary(datosEntrenamiento$Fare)
+length(datosEntrenamiento$Fare[datosEntrenamiento$Fare==0.0])
+```
+
+La variable `Cabin` muestra los camarotes asignados a la persona. Tiene 148 valores diferentes y, además, tiene 687 pasajeros con el valor en blanco, con lo que no parece una variable a tener en cuenta para la construcción de modelos.
+
+```{r analisis de Cabin}
+length(unique(datosEntrenamiento$Cabin))
+sum(datosEntrenamiento$Cabin == "")
+datosEntrenamiento <- subset(datosEntrenamiento, select = -c(Cabin))
+```
+
+La variable `Embarked` especifica el puerto en el que el pasajero embarcó en el Titanic, siendo `S` el puerto inglés de `Southhampton` con 644 pasajeros embarcados para partir al puerto `C` identificando al puerto francés de `Cherbourg` con 168 pasajeros embarcados para ir finalmente al puerto `Q` identificando el puerto irlandés de `Queenstown` con 77 pasajeros embarcados. Además vemos que hay dos pasajeros de los que se desconoce el puerto de embarque.
+
+Podemos ver que los % de supervivencia varían dependiendo del puerto, por lo que puede ser un valor importante.
+
+```{r analisis de Embarked}
+counts <- table(datosEntrenamiento$Embarked)
+#counts
+barplot(counts, main="Titanic",  xlab="Embarked", col=rainbow(4))
+ggplot(data=datosEntrenamiento[,],aes(x=`Embarked`,fill=`SurvivedFactor`))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+#Limpieza de los datos
+
+**¿Los datos contienen ceros o elementos vacíos?**
+
+La variable `Survived` contiene valores `0`, identificando aquellos pasajeros que no sobrevivieron.
+
+```{r vacios de Survived}
+length(datosEntrenamiento$Survived[datosEntrenamiento$Survived==0])
+```
+
+La variable `Age` contiene 177 valores `NA` para aquellos pasajeros de los que se desconoce su edad.
+
+```{r vacios de Age}
+length(datosEntrenamiento$Age[is.na(datosEntrenamiento$Age)])
+```
+
+La variable `SibSp` contiene valores `0`, identificando aquellos pasajeros con cero familiares a bordo.
+
+```{r vacios de SibSp}
+length(datosEntrenamiento$SibSp[datosEntrenamiento$SibSp==0])
+```
+
+La variable `Parch` contiene valores `0`, identificando aquellos pasajeros con cero hijos/parientes a bordo.
+
+```{r vacios de Parch}
+length(datosEntrenamiento$Parch[datosEntrenamiento$Parch==0])
+```
+
+La variable `Fare` contiene valores `0` señalando a polizones o a pasajeros de los que se desconoce qué precio pagaron.
+
+```{r vacios de Fare}
+length(datosEntrenamiento$Fare[datosEntrenamiento$Fare==0.0])
+```
+
+La variable `Embarked` contiene 2 valores en blanco, por lo que se desconoce en qué puerto embarcaron dichos pasajeros.
+
+```{r vacios de Embarked}
+length(datosEntrenamiento$Embarked[datosEntrenamiento$Embarked==""])
+```
+
+**¿Cómo gestionarías cada uno de estos casos?**
+
+Para las variables `Survived`, `SibSp` y `Parch` el valor `0` es perfectamente normal con lo que hay que hacer ningún tratamiento.
+
+La variable `Age` contiene 177 pasajeros con valor `NA`. Para tratar este caso se sustituirán dichos valores por la edad calculada mediante KNN.
+
+```{r tratamiento de Age}
+datosEntrenamiento$Age <- kNN(datosEntrenamiento)$Age
+```
+
+La variable `Fare` contiene 15 pasajeros con valor `0`, lo que no es habitual. Para tratar este caso se sustituirán dichos valores por el valor calculado por kNN.
+
+```{r tratamiento de Fare}
+datosEntrenamiento$Fare[datosEntrenamiento$Fare==0.0] <- NA
+datosEntrenamiento$Fare <- kNN(datosEntrenamiento)$Fare
+datosTest$Fare[datosTest$Fare==0.0] <- NA
+datosTest$Fare <- kNN(datosTest)$Fare
+```
+
+La variable `Embarked` contiene 2 valores en blanco que serán sustituidos por el valor más frecuente para dicha variable
+
+```{r tratamiento de Embarked}
+tableMax <- table(datosEntrenamiento$Embarked)
+maxEmbarked <- names(tableMax)[which.max(tableMax)]
+datosEntrenamiento$Embarked[datosEntrenamiento$Embarked==""] <- maxEmbarked
+length(datosEntrenamiento$Embarked[datosEntrenamiento$Embarked==""])
+```
+
+**Identificación y tratamiento de valores extremos.**
+
+La variable `Age` contiene 2 personas que están fuera del rango de la media más tres desviaciones típicas. Aunque estos valores son extremos los valores en si parecen razonables (74-80 años) por lo que los dejaremos tal cual.
+
+```{r tratamiento extremos age}
+meanAge <- mean(datosEntrenamiento$Age)
+sdAge <- sd(datosEntrenamiento$Age)
+length(datosEntrenamiento$Age[ (datosEntrenamiento$Age > (meanAge + (3*sdAge)))|datosEntrenamiento$Age < (meanAge - (3*sdAge))  ]  )
+datosEntrenamiento$Age[ (datosEntrenamiento$Age > (meanAge + (3*sdAge)))|datosEntrenamiento$Age < (meanAge - (3*sdAge))  ]  
+```
+
+La variable `SibSp` contiene 30 personas que tienen un valor fuera del rango de la media más tres desviaciones típicas (4-8 parientes), siendo los 7 hermanos de la familia `Sage`. Aunque los valores son extremos, no hay razón para modificarlos en este momento.
+
+```{r tratamiento extremos SibSp}
+meanSibSp <- mean(datosEntrenamiento$SibSp)
+#meanSibSp
+sdSibSp <- sd(datosEntrenamiento$SibSp)
+#sdSibSp
+length(datosEntrenamiento$SibSp[ (datosEntrenamiento$SibSp > (meanSibSp + (3*sdSibSp)))|datosEntrenamiento$SibSp < (meanSibSp - (3*sdSibSp))  ]  )
+datosEntrenamiento$SibSp[ (datosEntrenamiento$SibSp > (meanSibSp + (3*sdSibSp)))|datosEntrenamiento$SibSp < (meanSibSp - (3*sdSibSp))  ] 
+```
+
+De igual forma, la variable `Parch` contiene 15 valores que tienen un valor fuera del rango de la media más tres desviaciones típicas (3-6 parientes). Aunque los valores son extremos no hay razón para modificarlos en este momento.
+
+```{r tratamiento extremos Parch}
+meanParch <- mean(datosEntrenamiento$Parch)
+#meanParch
+sdParch <- sd(datosEntrenamiento$Parch)
+#sdParch
+length(datosEntrenamiento$Parch[ (datosEntrenamiento$Parch > (meanParch + (3*sdParch)))|datosEntrenamiento$Parch < (meanParch - (3*sdParch))  ]  )
+datosEntrenamiento$Parch[ (datosEntrenamiento$Parch > (meanParch + (3*sdParch)))|datosEntrenamiento$Parch < (meanParch - (3*sdParch))  ]
+```
+
+Igualmente, la variable `Fare` contiene 20 pasajeros que tienen un valor fuera del ranto de la media más tres desviaciones típicas (211.3375-512.3292). Aunque los valores son extremos no hay razón para modificarlos en este momento.
+
+```{r tratamiento extremos Fare}
+meanFare <- mean(datosEntrenamiento$Fare)
+#meanFare
+sdFare <- sd(datosEntrenamiento$Fare)
+#sdFare
+length(datosEntrenamiento$Fare[ (datosEntrenamiento$Fare > (meanFare + (3*sdFare)))|datosEntrenamiento$Fare < (meanFare - (3*sdFare))  ]  )
+datosEntrenamiento$Fare[ (datosEntrenamiento$Fare > (meanFare + (3*sdFare)))|datosEntrenamiento$Fare < (meanFare - (3*sdFare))  ]
+```
+
+#Análisis de los datos
+
+**Selección de los grupos de datos que se quieren analizar/comparar (planificación de los análisis a aplicar).**
+
+Parece interesante considerar los siguientes grupos para el análisis.
+
+- Personas divididas por género.
+
+```{r dividir datos personas genero}
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Sex=="male"])
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Sex=="female"])
+ggplot(data = datosEntrenamiento, aes(x = Sex, y = Survived, colour = Sex)) +  geom_boxplot() +  geom_point() +  theme_bw() +  theme(legend.position = "none")
+```
+
+- Personas divididas clase.
+
+```{r dividir datos personas clase}
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Pclass==1])
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Pclass==2])
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Pclass==3])
+ggplot(data = datosEntrenamiento, aes(x = Pclass, y = Survived, colour = Pclass)) +  geom_boxplot() +  geom_point() +  theme_bw() +  theme(legend.position = "none")
+```
+
+- Personas divididas por puerto de embarque.
+
+```{r dividir datos personas puerto}
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Embarked=="C"])
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Embarked=="Q"])
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Embarked=="S"])
+ggplot(data = datosEntrenamiento, aes(x = Embarked, y = Survived, colour = Embarked)) +  geom_boxplot() +  geom_point() +  theme_bw() +  theme(legend.position = "none")
+```
+
+- Personas divididas por tener o no familia.
+
+```{r calcular personas con familia}
+datosEntrenamiento$Familia <- 0
+datosEntrenamiento$Familia[datosEntrenamiento$Parch>0] <- 1
+datosEntrenamiento$Familia[datosEntrenamiento$SibSp>0] <- 1
+datosEntrenamiento$Familia <- as.integer(datosEntrenamiento$Familia)
+datosEntrenamiento$FamiliaFactor <- as.factor(datosEntrenamiento$Familia)
+#str(datosEntrenamiento)
+datosTest$Familia <- 0
+datosTest$Familia[datosTest$Parch>0] <- 1
+datosTest$Familia[datosTest$SibSp>0] <- 1
+datosTest$Familia <- as.integer(datosTest$Familia)
+```
+
+```{r dividir datos personas familia}
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Familia==0])
+summary(datosEntrenamiento$Survived[datosEntrenamiento$Familia==1])
+ggplot(data = datosEntrenamiento, aes(x = FamiliaFactor, y = Survived, colour = FamiliaFactor)) +  geom_boxplot() +  geom_point() +  theme_bw() +  theme(legend.position = "none")
+```
+
+**Comprobación de la normalidad y homogeneidad de la varianza.**
+
+En primer lugar comprobaremos si las variables cuantitativas provienen de una población distribuida normalmente. Para ello se usará el test de Anderson-Darling. De esta forma se comprobará que cada variable obtiene un p-valor superior al nivel de significación $\alpha$ = 0.05. Si así fuera la variable sigue una distribución normal
+
+```{r comprobacion normalidad}
+
+alpha = 0.05
+col.names = colnames(datosEntrenamiento)
+
+for (i in 1:ncol(datosEntrenamiento)) {
+	if (is.integer(datosEntrenamiento[,i]) | is.numeric(datosEntrenamiento[,i])) {
+		p_val = ad.test(datosEntrenamiento[,i])$p.value
+		if (p_val < alpha) {
+			cat(col.names[i])
+			cat(" NO sigue una distribución normal\n")
+		}else{
+			cat(col.names[i])
+			cat(" SI sigue una distribución normal\n")
+		}
+	}
+}
+```
+
+Es decir, ninguna variable sigue una distribución normal.
+
+Además comprobaremos la homogeneidad de varianzas entre poblaciones usando el test de Fligner-Killeen. En primer lugar comprobaremos si la varianza de Survived en la población masculina es la misma que la población femenina, siendo esta la hipótesis nula.
+
+```{r comprobacion homogeneidad varianza genero}
+fligner.test(Survived ~ Sex, data = datosEntrenamiento)
+```
+
+Obtenemos un valor de `0.01627`, inferior a $\alpha$ = `0.05` por lo que rechazamos la hipótesis de que las varianzas de ambas muestras son homogéneas.
+
+De igual forma comprobaremos si la varianza de las poblaciones divididas por la clase del camarote es la misma, siendo esta la hipótesis nula.
+
+```{r comprobacion homogeneidad varianza clase}
+fligner.test(Survived ~ Pclass, data = datosEntrenamiento)
+```
+
+Obtenemos un valor de `1.712e-08`, inferior a $\alpha$ = `0.05` por lo que rechazamos la hipótesis de que las varianzas de las muestras son homogéneas.
+
+Repetiremos el proceso para comprobar si la varianza de las poblaciones divididas por el puerto de embarque es la misma, siendo esta la hipótesis nula.
+
+```{r comprobacion homogeneidad varianza puerto}
+fligner.test(Survived ~ Embarked, data = datosEntrenamiento)
+```
+
+Obtenemos un valor de `0.03196`, inferior a $\alpha$ = `0.05` por lo que rechazamos la hipótesis de que las varianzas de las muestras son homogéneas.
+
+Por ultimo analizaremos la varianza de las poblaciones divididas dependiendo de si tienen o no familia. La hipótesis nula será que son iguales.
+
+```{r comprobacion homogeneidad varianza familia}
+fligner.test(Survived ~ FamiliaFactor, data = datosEntrenamiento)
+```
+
+Obtenemos un valor de `9.426e-09`, inferior a $\alpha$ = `0.05` por lo que rechazamos la hipótesis de que las varianzas de las muestras son homogéneas.
+
+**Aplicación de pruebas estadísticas para comparar los grupos de datos. En función de los datos y el objetivo del estudio, aplicar pruebas de contraste de hipótesis, correlaciones, regresiones, etc.**
+
+Para empezar estudiaremos la correlación entre las variables usando el coeficiente de correlación de Spearman debido a que hemos visto que los datos no se ajustan a una distribución normal.
+
+```{r preparacion as int}
+datosEntrenamiento$SexInt <- as.numeric(datosEntrenamiento$Sex)
+datosEntrenamiento$PclassInt <- as.numeric(datosEntrenamiento$Pclass)
+```
+
+```{r correlaciones}
+corr_matrix <- matrix(nc = 2, nr = 0)
+colnames(corr_matrix) <- c("estimate", "p-value")
+
+for (i in 1:(ncol(datosEntrenamiento))) {
+	if (is.integer(datosEntrenamiento[,i]) | is.numeric(datosEntrenamiento[,i]) ) {
+		spearman_test = cor.test(datosEntrenamiento[,i],datosEntrenamiento$Survived,method = "spearman",exact=FALSE)
+		corr_coef = spearman_test$estimate
+		p_val = spearman_test$p.value
+		pair = matrix(ncol = 2, nrow = 1)
+		pair[1][1] = corr_coef
+		pair[2][1] = p_val
+		corr_matrix <- rbind(corr_matrix, pair)
+		rownames(corr_matrix)[nrow(corr_matrix)] <- colnames(datosEntrenamiento)[i]
+	}
+}
+corr_matrix
+```
+
+Por ello podemos ver que las variables que más correlación tienen con `Survived` son, por este orden:
+
+- `Sex`
+- `Pclass`
+- `Fare`
+- `Familia`
+
+A continuación ejecutaremos una serie de contrastes. En primer lugar dividiremos los datos en dos muestras dependiendo del género del pasajero. La hipótesis nula es que la media de `Survived` es la misma, siendo la hipótesis alternativa que la media de `Survived` es inferior.
+
+```{r contraste genero}
+t.test(datosEntrenamiento$Survived[datosEntrenamiento$Sex=="male"],datosEntrenamiento$Survived[datosEntrenamiento$Sex=="female"],alternative="less")
+```
+
+Se obtiene un p-valor de `2.2e-16`, inferior al nivel de significación $\alpha$ = `0.05` por lo que rechazamos la hipótesis nula y concluimos que la media de supervivencia de los pasajeros de género masculino es inferior.
+
+Repetiremos este test para las muestras dependiendo de si pertenecen a la `Pclass` `3` o no. La hipotesis nula es que la media de `Survived` es la misma, siendo la hipotesis alternativa que la media de `Survived` es inferior.
+
+```{r contraste class 3}
+t.test(datosEntrenamiento$Survived[datosEntrenamiento$Pclass==3],datosEntrenamiento$Survived[datosEntrenamiento$Pclass!=3],alternative="less")
+```
+
+Se obtiene un p-valor de `2.2e-16`, inferior al nivel de significación $\alpha$ = `0.05` por lo que rechazamos la hipótesis nula y concluimos que la media de supervivencia de los pasajeros de tercera clase es inferior al resto.
+
+De nuevo comprobaremos si la supervivencia de los pasajeros de segunda clase es inferior a la supervivencia de los pasajeros de primera clase. La hipótesis nula es que la media de `Survived` es la misma, siendo la hipótesis alternativa que es inferior.
+
+```{r contraste class 21}
+t.test(datosEntrenamiento$Survived[datosEntrenamiento$Pclass==2],datosEntrenamiento$Survived[datosEntrenamiento$Pclass==1],alternative="less")
+```
+
+Se obtiene un p-valor de `0.0008233`, inferior al nivel de significación $\alpha$ = `0.05` por lo que rechazamos la hipótesis nula y concluimos que la media de supervivencia de los pasajeros de segunda clase es inferior a la supervivencia de los pasajeros de primera clase.
+
+Además comprobaremos si la supervivencia de los pasajeros embarcados en el puerto de `Cherbourg` es igual o no al resto de pasajeros. Por tanto la hipótesis nula es que la media de `Survived` es la misma, siendo la hipótesis alterativa que es inferior.
+
+```{r contraste puerto}
+t.test(datosEntrenamiento$Survived[datosEntrenamiento$Embarked=="C"],datosEntrenamiento$Survived[datosEntrenamiento$Embarked!="C"],alternative="less")
+```
+
+Se obtiene un p-valor de `1`, superior al nivel de significación $\alpha$ = `0.05` por lo que no podemos rechazar la hipótesis nula y no podemos decir que la supervivencia de los pasajeros embarcados en el puerto de `Cherbourg` sea superior a la supervivencia de el resto de pasajeros.
+
+Por último comprobaremos si la supervivencia de aquellos pasajeros sin familia es inferior a la supervivencia de los pasajeros con familia. Por ellos la hipótesis nula es que la media de `Survived` es la misma para los pasajeros con y sin familia y la hipótesis alternativa es que la media de `Survived` es inferior para los pasajeros sin familia.
+
+```{r contraste familia}
+t.test(datosEntrenamiento$Survived[datosEntrenamiento$Familia==0],datosEntrenamiento$Survived[datosEntrenamiento$Familia!=0],alternative="less")
+```
+
+Se obtiene un p-valor de `9.414e-10`, inferior al nivel de significación $\alpha$ = `0.05` por lo que podemos rechazar la hipótesis nula y podemos decir que la supervivencia de los pasajeros sin familia es inferior a la de los pasajeros con familia.
+
+A continuación se generarán modelos basados en regresión. El primero, usado únicamente la variable `Sex`.
+
+```{r regresion 1}
+threshold <- 0.4
+modelo1 <- lm(Survived ~ Sex ,data=datosEntrenamiento)
+summary(modelo1)
+datosTest$valueModelo1 <- predict(modelo1,datosTest)
+datosTest$resultadoModelo1 <- NA
+datosTest$resultadoModelo1[datosTest$valueModelo1 > threshold] <- 1
+datosTest$resultadoModelo1[datosTest$valueModelo1 <= threshold] <- 0
+datosTest$resultadoModelo1Factor <- as.factor(datosTest$resultadoModelo1)
+```
+
+El segundo usando `Sex` y `Pclass`.
+
+```{r regresion 2}
+modelo2 <- lm(Survived ~ Sex + Pclass ,data=datosEntrenamiento)
+summary(modelo2)
+datosTest$valueModelo2 <- predict(modelo2,datosTest)
+datosTest$resultadoModelo2 <- NA
+datosTest$resultadoModelo2[datosTest$valueModelo2 > threshold] <- 1
+datosTest$resultadoModelo2[datosTest$valueModelo2 <= threshold] <- 0
+datosTest$resultadoModelo2Factor <- as.factor(datosTest$resultadoModelo2)
+```
+
+El tercero usando `Sex`, `Pclass` y `Fare`.
+
+```{r regresion 3}
+modelo3 <- lm(Survived ~ Sex + Pclass + Fare ,data=datosEntrenamiento)
+summary(modelo3)
+datosTest$valueModelo3 <- predict(modelo3,datosTest)
+datosTest$resultadoModelo3 <- NA
+datosTest$resultadoModelo3[datosTest$valueModelo3 > threshold] <- 1
+datosTest$resultadoModelo3[datosTest$valueModelo3 <= threshold] <- 0
+datosTest$resultadoModelo3Factor <- as.factor(datosTest$resultadoModelo3)
+```
+
+El cuarto usando `Sex`, `Pclass`, `Fare` y `Familia`.
+
+```{r regresion 4}
+modelo4 <- lm(Survived ~ Sex + Pclass + Fare + Familia ,data=datosEntrenamiento)
+summary(modelo4)
+datosTest$valueModelo4 <- predict(modelo4,datosTest)
+datosTest$resultadoModelo4 <- NA
+datosTest$resultadoModelo4[datosTest$valueModelo4 > threshold] <- 1
+datosTest$resultadoModelo4[datosTest$valueModelo4 <= threshold] <- 0
+datosTest$resultadoModelo4Factor <- as.factor(datosTest$resultadoModelo4)
+```
+
+Y el quinto usando `Pclass`, `Fare` y `Familia`.
+
+```{r regresion 5}
+modelo5 <- lm(Survived ~ Pclass + Fare + Familia ,data=datosEntrenamiento)
+summary(modelo5)
+datosTest$valueModelo5 <- predict(modelo5,datosTest)
+datosTest$resultadoModelo5 <- NA
+datosTest$resultadoModelo5[datosTest$valueModelo5 > threshold] <- 1
+datosTest$resultadoModelo5[datosTest$valueModelo5 <= threshold] <- 0
+datosTest$resultadoModelo5Factor <- as.factor(datosTest$resultadoModelo5)
+```
+
+Se generan los ficheros para kaggle.
+
+```{r escribir resultados para kaggle}
+resultadosFileModelo1 = data.frame(PassengerId=datosTest$PassengerId,Survived=datosTest$resultadoModelo1)
+resultadosFileModelo2 = data.frame(PassengerId=datosTest$PassengerId,Survived=datosTest$resultadoModelo2)
+resultadosFileModelo3 = data.frame(PassengerId=datosTest$PassengerId,Survived=datosTest$resultadoModelo3)
+resultadosFileModelo4 = data.frame(PassengerId=datosTest$PassengerId,Survived=datosTest$resultadoModelo4)
+resultadosFileModelo5 = data.frame(PassengerId=datosTest$PassengerId,Survived=datosTest$resultadoModelo5)
+write.csv(resultadosFileModelo1,file = "submission_modelo1.csv",row.names = F)
+write.csv(resultadosFileModelo2,file = "submission_modelo2.csv",row.names = F)
+write.csv(resultadosFileModelo3,file = "submission_modelo3.csv",row.names = F)
+write.csv(resultadosFileModelo4,file = "submission_modelo4.csv",row.names = F)
+write.csv(resultadosFileModelo5,file = "submission_modelo5.csv",row.names = F)
+write.csv(datosEntrenamiento,file = "train_processed.csv",row.names = F)
+```
+
+#Representación de los resultados a partir de tablas y gráficas
+
+En primer lugar se repite la distribución de supervivientes en base a su genero.
+
+```{r modelos entrenamiento sex}
+ggplot(data=datosEntrenamiento[,],aes(x=`Sex`,fill=`SurvivedFactor`))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+Para luego compararlo con los modelos generados. Los modelos generados no parecen seguir la misma tendencia.
+
+```{r modelos generados sex}
+ggplot(data=datosTest[,],aes(x=`Sex`,fill=`resultadoModelo1Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Sex`,fill=`resultadoModelo2Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Sex`,fill=`resultadoModelo3Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Sex`,fill=`resultadoModelo4Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Sex`,fill=`resultadoModelo5Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+De igual forma se repite la distribución de supervivientes en base a la clase de su camarote.
+
+```{r modelos entrenamiento Pclass}
+ggplot(data=datosEntrenamiento[,],aes(x=`Pclass`,fill=`SurvivedFactor`))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+Para luego compararlo con los modelos generados. Los modelos generados tampoco parecen seguir la misma tendencia por calidad del camarote.
+
+```{r modelos generados Pclass}
+ggplot(data=datosTest[,],aes(x=`Pclass`,fill=`resultadoModelo1Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Pclass`,fill=`resultadoModelo2Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Pclass`,fill=`resultadoModelo3Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Pclass`,fill=`resultadoModelo4Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+ggplot(data=datosTest[,],aes(x=`Pclass`,fill=`resultadoModelo5Factor`))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+#Resolución del problema
+
+**A partir de los resultados obtenidos, ¿cuáles son las conclusiones? ¿Los resultados permiten responder al problema?**
+
+La conclusiones son:
+
+- Los pasajeros de género femenino tienen muchas más posibilidades de sobrevivir que los pasajeros de género masculino.
+- Los pasajeros de camarotes de primera clase tienen más posibilidades de sobrevivir que el resto. Además, los pasajeros de segunda clase tienen también más posibilidades que los de tercera clase.
+- Los pasajeros con familia tienen más posibilidades de sobrevivir.
+- El puerto de embarque usado no afecta significativamente a la supervivencia del pasajero.
+- La edad no afecta significativamente a la supervivencia del pasajero.
+
+Por tanto las causas de la alta mortandad quedan analizadas y explicadas, aportando respuestas al problema planteado.
+
+#Código
+
+**Hay que adjuntar el código, preferiblemente en R, con el que se ha realizado la limpieza, análisis y representación de los datos. Si lo preferís, también podéis trabajar en Python.**
+
+El código está disponible en el fichero aantonc.Rmd disponible en GitHub.
